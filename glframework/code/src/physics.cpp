@@ -30,6 +30,7 @@ glm::mat3 inertiaBodyInv;
 
 bool renderCube = true;
 
+const float sideLength = 10.f;
 namespace Cube
 {
 	extern void setupCube();
@@ -110,16 +111,16 @@ void PhysicsInit()
 	position = glm::vec3(randomFloat(-5.0f, 5.0f), randomFloat(0.0f, 10.0f), randomFloat(-5.0f, 5.0f));
 	velocity = angularVelocity = glm::vec3(0.f, 0.f, 0.f);
 
+	//rotation:
 	quaternion = glm::quat(glm::vec3(rand() % 2, rand() % 2, rand() % 2));
 	rotation = glm::toMat3(quaternion);
 	setCubeTransform();
 
 	//Forces:
 	force = m*gravityAccel;
-	inertiaBodyInv = glm::inverse(glm::mat4() * (m* 100.0f / 6));
+	inertiaBodyInv = glm::inverse(glm::mat3() * (m* pow(sideLength,2) / 6));
 
 	torque = linearMomentum = angularMomentum = glm::vec3(0.f, 0.f, 0.f);
-
 }
 
 void PhysicsUpdate(float dt)
@@ -161,6 +162,11 @@ void PhysicsUpdate(float dt)
 			rotation += dt*(angularVelocity*rotation);
 
 			setCubeTransform();
+
+			if (useCollisions)
+			{
+
+			}
 		}
 	}
 }
@@ -176,4 +182,9 @@ void setCubeTransform()
 	cubeRotation = glm::mat4(rotation);
 	cubeTransform = cubePosition*cubeRotation;
 	Cube::updateCube(cubeTransform);
+}
+
+void boundingBox()
+{
+
 }
