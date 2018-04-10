@@ -2,12 +2,33 @@
 #include <imgui\imgui_impl_sdl_gl3.h>
 #include <glm\glm.hpp>
 #include <glm\gtc\matrix_transform.hpp>
-//#include <glm\gtc\type_ptr.hpp>
+#include <glm\gtx\quaternion.hpp>
 #include <iostream>
 #include <time.h>
 #include <SDL.h>
 
-glm::mat4 randomCubeTransform;
+//matrices:
+glm::mat4 cubeTransform;
+glm::mat4 cubePosition;
+glm::mat4 cubeRotation;
+glm::quat quaternion;
+
+//kinematics:
+glm::vec3 position;
+glm::mat3 rotation;
+glm::vec3 velocity;
+glm::vec3 angularVelocity;
+
+//forces:
+const float m = 1;
+glm::vec3 force;
+glm::vec3 torque;
+glm::vec3 linearMomentum;
+glm::vec3 angularMomentum;
+glm::mat3 inertiaTensorInv;
+glm::mat3 inertiaBodyInv;
+
+bool renderCube = true;
 
 namespace Cube
 {
@@ -17,6 +38,7 @@ namespace Cube
 	extern void drawCube();
 }
 void PhysicsInit();
+void setCubeTransform();
 
 float randomFloat(float min, float max)
 {
@@ -84,11 +106,20 @@ void PhysicsInit()
 	//Random:
 	srand(static_cast<unsigned int>(_getpid()) ^ static_cast<unsigned int>(clock()) ^ static_cast<unsigned int>(time(NULL)));
 
-	randomCubeTransform = glm::translate(glm::mat4(), glm::vec3(randomFloat(-5.0f,5.0f), randomFloat(0.0f, 10.0f), randomFloat(-5.0f, 5.0f)));
-	randomCubeTransform *= glm::rotate(glm::mat4(), randomFloat(0.0f, 180.f), glm::vec3(rand()%2, rand()%2, rand()%2));
+	//Cinètica inicial:
+	position = glm::vec3(randomFloat(-5.0f, 5.0f), randomFloat(0.0f, 10.0f), randomFloat(-5.0f, 5.0f));
+	velocity = angularVelocity = glm::vec3(0.f, 0.f, 0.f);
 
-	//Cube::setupCube();
-	Cube::updateCube(glm::mat4());
+	quaternion = glm::quat(glm::vec3(rand() % 2, rand() % 2, rand() % 2));
+	rotation = glm::toMat3(quaternion);
+	setCubeTransform();
+
+	//Forces:
+	force = m*gravityAccel;
+	inertiaBodyInv = glm::inverse(glm::mat4() * (m* 100.0f / 6));
+
+	torque = linearMomentum = angularMomentum = glm::vec3(0.f, 0.f, 0.f);
+
 }
 
 void PhysicsUpdate(float dt)
@@ -102,7 +133,34 @@ void PhysicsUpdate(float dt)
 		else
 		{
 			resetTime += dt;
-			Cube::drawCube();
+
+			//semi-implicit Euler Solver:
+
+			//linear Momentum:
+			linearMomentum += dt*force;
+
+			//torque:
+
+
+			//angular Momentum:
+			angularMomentum += dt*torque;
+
+			//velocity:
+			velocity = linearMomentum / m;
+
+			//position:
+			position += dt*velocity;
+
+			//inertia:
+			inertiaTensorInv = (rotation * inertiaBodyInv) * glm::transpose(rotation);
+
+			//angular velocity:
+			angularVelocity = inertiaTensorInv * angularMomentum;
+
+			//rotation:
+			rotation += dt*(angularVelocity*rotation);
+
+			setCubeTransform();
 		}
 	}
 }
@@ -110,4 +168,12 @@ void PhysicsUpdate(float dt)
 void PhysicsCleanup()
 {
 	Cube::cleanupCube();
+}
+
+void setCubeTransform()
+{
+	cubePosition = glm::translate(glm::mat4(), position);
+	cubeRotation = glm::mat4(rotation);
+	cubeTransform = cubePosition*cubeRotation;
+	Cube::updateCube(cubeTransform);
 }
