@@ -30,9 +30,20 @@ glm::mat3 inertiaBodyInv;
 
 bool renderCube = true;
 
-const float sideLength = 10.f;
 namespace Cube
 {
+	float halfW = 1.f;
+	glm::vec3 verts[8] = {
+		glm::vec3(-halfW, -halfW, -halfW),
+		glm::vec3(-halfW, -halfW,  halfW),
+		glm::vec3(halfW, -halfW,  halfW),
+		glm::vec3(halfW, -halfW, -halfW),
+		glm::vec3(-halfW,  halfW, -halfW),
+		glm::vec3(-halfW,  halfW,  halfW),
+		glm::vec3(halfW,  halfW,  halfW),
+		glm::vec3(halfW,  halfW, -halfW)
+	};
+
 	extern void setupCube();
 	extern void cleanupCube();
 	extern void updateCube(const glm::mat4& transform);
@@ -45,6 +56,11 @@ float randomFloat(float min, float max)
 {
 	return ((max - min) * ((float)rand() / RAND_MAX)) + min;
 }
+
+void checkAllVertexCollisions();
+void checkVertexPlaneCollision(glm::vec3 vertexPos);
+void particlePlaneCollision();
+void applyForce(glm::vec3 vertex);
 
 #pragma region GUI Variables
 static bool playSimulation = true;
@@ -108,7 +124,7 @@ void PhysicsInit()
 	srand(static_cast<unsigned int>(_getpid()) ^ static_cast<unsigned int>(clock()) ^ static_cast<unsigned int>(time(NULL)));
 
 	//Cinètica inicial:
-	position = glm::vec3(randomFloat(-5.0f, 5.0f), randomFloat(0.0f, 10.0f), randomFloat(-5.0f, 5.0f));
+	position = glm::vec3(randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW -0.1f), randomFloat(0.0f + Cube::halfW + 0.1f, 10.0f - Cube::halfW - 0.1f), randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW - 0.1f));
 	velocity = angularVelocity = glm::vec3(0.f, 0.f, 0.f);
 
 	//rotation:
@@ -118,7 +134,7 @@ void PhysicsInit()
 
 	//Forces:
 	force = m*gravityAccel;
-	inertiaBodyInv = glm::inverse(glm::mat3() * (m* pow(sideLength,2) / 6));
+	inertiaBodyInv = glm::inverse(glm::mat3() * (m* pow(Cube::halfW*2,2) / 6));
 
 	torque = linearMomentum = angularMomentum = glm::vec3(0.f, 0.f, 0.f);
 }
@@ -136,6 +152,7 @@ void PhysicsUpdate(float dt)
 			resetTime += dt;
 
 			//semi-implicit Euler Solver:
+			//********************************
 
 			//linear Momentum:
 			linearMomentum += dt*force;
@@ -165,7 +182,7 @@ void PhysicsUpdate(float dt)
 
 			if (useCollisions)
 			{
-
+				checkAllVertexCollisions();
 			}
 		}
 	}
@@ -184,7 +201,27 @@ void setCubeTransform()
 	Cube::updateCube(cubeTransform);
 }
 
-void boundingBox()
+void checkAllVertexCollisions()
+{
+	glm::vec3 tempWorldPosition;
+	for (int i=0;i<=Cube::verts->length();i++)
+	{
+		tempWorldPosition = Cube::verts[i] + position;
+		checkVertexPlaneCollision(tempWorldPosition);
+	}
+}
+
+void checkVertexPlaneCollision(glm::vec3 vertexPos)
+{
+
+}
+
+void particlePlaneCollision()
+{
+
+}
+
+void applyForce(glm::vec3 vertex)
 {
 
 }

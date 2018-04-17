@@ -822,7 +822,7 @@ GLuint cubeShaders[2];
 GLuint cubeProgram;
 glm::mat4 objMat = glm::mat4(1.f);
 
-extern const float halfW = 0.5f;
+extern float halfW;
 int numVerts = 24 + 6; // 4 vertex/face * 6 faces + 6 PRIMITIVE RESTART
 
 //   4---------7
@@ -833,16 +833,7 @@ int numVerts = 24 + 6; // 4 vertex/face * 6 faces + 6 PRIMITIVE RESTART
 //| /       | /
 //|/        |/
 //1---------2
-glm::vec3 verts[] = {
-	glm::vec3(-halfW, -halfW, -halfW),
-	glm::vec3(-halfW, -halfW,  halfW),
-	glm::vec3(halfW, -halfW,  halfW),
-	glm::vec3(halfW, -halfW, -halfW),
-	glm::vec3(-halfW,  halfW, -halfW),
-	glm::vec3(-halfW,  halfW,  halfW),
-	glm::vec3(halfW,  halfW,  halfW),
-	glm::vec3(halfW,  halfW, -halfW)
-};
+extern glm::vec3 verts[8];
 glm::vec3 norms[] = {
 	glm::vec3(0.f, -1.f,  0.f),
 	glm::vec3(0.f,  1.f,  0.f),
