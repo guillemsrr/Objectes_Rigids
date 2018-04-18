@@ -12,3 +12,4 @@ glframework/.vs/GL_framework/v15/.suo
 *.exp
 *.ilk
 *.lib
+*.obj

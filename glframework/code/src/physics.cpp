@@ -62,20 +62,21 @@ namespace Cube
 	extern void drawCube();
 }
 
-#pragma region Funcions
+#pragma region Functions
+//various:
 void PhysicsInit();
-void setCubeTransform();
 float randomFloat(float min, float max)
 {
 	return ((max - min) * ((float)rand() / RAND_MAX)) + min;
 }
-
+//physics:
+void setCubeTransform();
+void eulerPosition(float dt);
 //Col·lisions:
 void checkAllVertexCollisions();
-void checkVertexPlaneCollisions(glm::vec3 vertexPos, glm::vec3 lastVertexPos, int numVert);
-void checkParticlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, glm::vec3 lastpos, int numVert);
-void particlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, int numVert);
-void addImpulse();
+void checkVertexPlaneCollisions(int numVert);
+void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert);
+void particlePlaneCollision(glm::vec3 normal, float dt, int numVert);
 #pragma endregion
 
 #pragma region GUI Variables
@@ -152,6 +153,7 @@ void PhysicsInit()
 	force = m*gravityAccel;
 	inertiaBodyInv = glm::inverse(glm::mat3() * (m* pow(Cube::halfW*2,2) / 6));
 
+	//I NEED A RANDOM FORCE TO A RANDOM ¿VERTEX?
 	torque = linearMomentum = angularMomentum = glm::vec3(0.f, 0.f, 0.f);
 }
 
@@ -244,7 +246,6 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 	if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, auxPos) + d) <= 0.f)//the vertex has collisioned
 	{
 		//accuration of collision position using bisection method:
-
 		//time:
 		float lastTime = 0.f;
 		float actualTime = deltaTime;
@@ -273,14 +274,21 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 			cuttingTime = (actualTime + lastTime) / 2.f;
 		}
 
-		particlePlaneCollision(normal, d, numVert);
+		//we compute the collision reaction at the exacte time:
+		particlePlaneCollision(normal, cuttingTime, numVert);
 	}
 }
 
-void particlePlaneCollision(glm::vec3 normal, float d, int numVert)
+void particlePlaneCollision(glm::vec3 normal, float dt, int numVert)
 {
+	//actualitzar al dt actual primer!<----
+	glm::vec3 vRel = normal * (velocity + glm::cross(angularVelocity, Cube::verts[numVert] * rotation));
+	//ajustar si és resting o colliding<----
+
+
+
 	//IMPULSE:
-	addImpulse();
+
 
 	//update FORCE:
 
@@ -289,11 +297,6 @@ void particlePlaneCollision(glm::vec3 normal, float d, int numVert)
 
 
 	eulerPosition(deltaTime);
-
-}
-
-void addImpulse()
-{
 
 }
 
