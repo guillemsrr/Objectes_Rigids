@@ -1,3 +1,14 @@
 
 glframework/.vs/GL_framework/v15/.suo
 glframework/.vs/GL_framework/v15/Browse.VC.db
+glframework/.vs/GL_framework/v15/.suo
+glframework/.vs/GL_framework/v15/Browse.VC.db
+glframework/.vs/GL_framework/v15/ipch/AutoPCH/9178718d31ebe26a/RENDER_PRIMS.ipch
+glframework/.vs/GL_framework/v15/ipch/AutoPCH/99e521e1dde7a409/PHYSICS.ipch
+glframework/.vs/GL_framework/v15/.suo
+*.ipch
+*.vcxproj
+*.exe
+*.exp
+*.ilk
+*.lib

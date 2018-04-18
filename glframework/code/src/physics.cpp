@@ -7,6 +7,7 @@
 #include <time.h>
 #include <SDL.h>
 
+#pragma region Variables
 //matrices:
 glm::mat4 cubeTransform;
 glm::mat4 cubePosition;
@@ -35,10 +36,11 @@ glm::vec3 YplaneNormal = { 0,1,0 };
 glm::vec3 ZplaneNormal = { 0,0,1 };
 
 //Time:
-float resetTime;
+float time;
 float deltaTime;
 
 bool renderCube = true;
+#pragma endregion
 
 namespace Cube
 {
@@ -59,18 +61,22 @@ namespace Cube
 	extern void updateCube(const glm::mat4& transform);
 	extern void drawCube();
 }
+
+#pragma region Funcions
 void PhysicsInit();
 void setCubeTransform();
-
 float randomFloat(float min, float max)
 {
 	return ((max - min) * ((float)rand() / RAND_MAX)) + min;
 }
 
+//Col·lisions:
 void checkAllVertexCollisions();
+void checkVertexPlaneCollisions(glm::vec3 vertexPos, glm::vec3 lastVertexPos, int numVert);
 void checkParticlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, glm::vec3 lastpos, int numVert);
 void particlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, int numVert);
 void addImpulse();
+#pragma endregion
 
 #pragma region GUI Variables
 static bool playSimulation = true;
@@ -128,7 +134,7 @@ void GUI()
 void PhysicsInit()
 {
 	//Time:
-	resetTime = 0.0f;
+	time = 0.0f;
 	//Random:
 	srand(static_cast<unsigned int>(_getpid()) ^ static_cast<unsigned int>(clock()) ^ static_cast<unsigned int>(time(NULL)));
 
@@ -153,27 +159,19 @@ void PhysicsUpdate(float dt)
 {
 	if (playSimulation)
 	{
-		if (resetTime >= totalResetTime)
+		if (time >= totalResetTime)
 		{
 			clicked++;
 		}
 		else
 		{
-			resetTime += dt;
+			time += dt;
 			deltaTime = dt;
 
 			//semi-implicit Euler Solver:
 			//********************************
 
-			//linear Momentum:
-			linearMomentum += dt * force;
-
-			//velocity:
-			velocity = linearMomentum / m;
-
-			//position:
-			lastPosition = position;
-			position += dt * velocity;
+			eulerPosition(dt);
 
 			//collisions:
 			if (useCollisions)
@@ -194,7 +192,6 @@ void PhysicsUpdate(float dt)
 			rotation += dt*(angularVelocity*rotation);
 
 			setCubeTransform();
-
 		}
 	}
 }
@@ -218,63 +215,70 @@ void checkAllVertexCollisions()
 	glm::vec3 tempLastWorldPosition;
 	for (int i=0;i<=Cube::verts->length();i++)
 	{
-		tempWorldPosition = Cube::verts[i] + position;
-		tempLastWorldPosition = Cube::verts[i] + lastPosition;
-		checkVertexPlaneCollisions(tempWorldPosition, tempLastWorldPosition, i);
+		checkVertexPlaneCollisions(i);
 	}
 }
 
-void checkVertexPlaneCollisions(glm::vec3 vertexPos, glm::vec3 lastVertexPos, int numVert)
+void checkVertexPlaneCollisions(int numVert)
 {
 	//left plane
-	checkParticlePlaneCollision(XplaneNormal, 5.f, vertexPos, lastVertexPos, numVert);
+	checkParticlePlaneCollision(XplaneNormal, 5.f, numVert);
 	//right plane
-	checkParticlePlaneCollision(-XplaneNormal, 5.f, vertexPos, lastVertexPos, numVert);
+	checkParticlePlaneCollision(-XplaneNormal, 5.f, numVert);
 	//back plane
-	checkParticlePlaneCollision(ZplaneNormal, 5.f, vertexPos, lastVertexPos, numVert);
+	checkParticlePlaneCollision(ZplaneNormal, 5.f, numVert);
 	//front plane
-	checkParticlePlaneCollision(-ZplaneNormal, 5.f, vertexPos, lastVertexPos, numVert);
+	checkParticlePlaneCollision(-ZplaneNormal, 5.f, numVert);
 	//down plane
-	checkParticlePlaneCollision(YplaneNormal, 0.f, vertexPos, lastVertexPos, numVert);
+	checkParticlePlaneCollision(YplaneNormal, 0.f, numVert);
 	//up plane
-	checkParticlePlaneCollision(-YplaneNormal, 10.f, vertexPos, lastVertexPos, numVert);
+	checkParticlePlaneCollision(-YplaneNormal, 10.f, numVert);
 }
 
-void checkParticlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, glm::vec3 lastpos, int numVert)
+void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 {
-	if ((glm::dot(normal, lastpos) + d)*(glm::dot(normal, pos) + d) <= 0.f)
-	{
-		//accuration of position:
-		//bisection method
-		glm::vec3 auxLast = lastpos;
-		glm::vec3 auxPos = pos;
-		glm::vec3 cuttingPoint = auxLast;
-		const float tolerance = 0.00001f;
+	//For the best vertex adjustment, we need to apply the rotation before world translation.
+	glm::vec3 auxPos = Cube::verts[numVert] * rotation + position;
+	glm::vec3 auxLast = Cube::verts[numVert] * rotation + lastPosition;
 
-		while(glm::distance(auxLast, auxPos)>=tolerance)//within some tolerance
+	if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, auxPos) + d) <= 0.f)//the vertex has collisioned
+	{
+		//accuration of collision position using bisection method:
+
+		//time:
+		float lastTime = 0.f;
+		float actualTime = deltaTime;
+		float cuttingTime = (actualTime + lastTime)/2.f;
+		const float tolerance = deltaTime/1000.f;
+
+		//we put the cube variables to the last frame:
+		eulerPosition(-deltaTime);
+
+		while(cuttingTime>=tolerance)//within some tolerance
 		{
+			eulerPosition(cuttingTime);
+			//adjust the vertex position:
+			auxPos = Cube::verts[numVert] * rotation + position;
+			auxLast = Cube::verts[numVert] * rotation + lastPosition;
+
 			if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, auxPos) + d) <= 0.f)
 			{
-				auxLast = cuttingPoint;
+				lastTime = cuttingTime;
 			}
 			else
 			{
-				auxPos = cuttingPoint;
+				actualTime = cuttingTime;
 			}
-			cuttingPoint = (auxLast + auxPos) / 2.f;
+			eulerPosition(-cuttingTime);
+			cuttingTime = (actualTime + lastTime) / 2.f;
 		}
 
-		pos = cuttingPoint;
-
-		particlePlaneCollision(normal, d, pos, numVert);
+		particlePlaneCollision(normal, d, numVert);
 	}
 }
 
-void particlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, int numVert)
+void particlePlaneCollision(glm::vec3 normal, float d, int numVert)
 {
-	//adjust cube world position:
-	position = pos + Cube::verts[numVert];
-
 	//IMPULSE:
 	addImpulse();
 
@@ -284,19 +288,24 @@ void particlePlaneCollision(glm::vec3 normal, float d, glm::vec3 pos, int numVer
 	//update TORQUE:
 
 
-	//linear Momentum:
-	linearMomentum += deltaTime * force;
-
-	//velocity:
-	velocity = linearMomentum / m;
-
-	//position:
-	lastPosition = position;
-	position += deltaTime * velocity;
+	eulerPosition(deltaTime);
 
 }
 
 void addImpulse()
 {
 
+}
+
+void eulerPosition(float dt)
+{
+	//linear Momentum:
+	linearMomentum += dt * force;
+
+	//velocity:
+	velocity = linearMomentum / m;
+
+	//position:
+	lastPosition = position;
+	position += dt * velocity;
 }
