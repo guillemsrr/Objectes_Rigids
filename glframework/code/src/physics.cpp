@@ -36,7 +36,7 @@ glm::vec3 YplaneNormal = { 0,1,0 };
 glm::vec3 ZplaneNormal = { 0,0,1 };
 
 //Time:
-float time;
+float resetTime;
 float deltaTime;
 
 bool renderCube = true;
@@ -135,7 +135,7 @@ void GUI()
 void PhysicsInit()
 {
 	//Time:
-	time = 0.0f;
+	resetTime = 0.0f;
 	//Random:
 	srand(static_cast<unsigned int>(_getpid()) ^ static_cast<unsigned int>(clock()) ^ static_cast<unsigned int>(time(NULL)));
 
@@ -161,13 +161,13 @@ void PhysicsUpdate(float dt)
 {
 	if (playSimulation)
 	{
-		if (time >= totalResetTime)
+		if (resetTime >= totalResetTime)
 		{
 			clicked++;
 		}
 		else
 		{
-			time += dt;
+			resetTime += dt;
 			deltaTime = dt;
 
 			//semi-implicit Euler Solver:
@@ -178,7 +178,7 @@ void PhysicsUpdate(float dt)
 			//collisions:
 			if (useCollisions)
 			{
-				checkAllVertexCollisions();
+				//checkAllVertexCollisions();
 			}
 
 			//angular Momentum:
@@ -250,7 +250,7 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 		float lastTime = 0.f;
 		float actualTime = deltaTime;
 		float cuttingTime = (actualTime + lastTime)/2.f;
-		const float tolerance = deltaTime/1000.f;
+		const float tolerance = deltaTime/10.f;
 
 		//we put the cube variables to the last frame:
 		eulerPosition(-deltaTime);
@@ -281,22 +281,25 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 
 void particlePlaneCollision(glm::vec3 normal, float dt, int numVert)
 {
-	//actualitzar al dt actual primer!<----
-	glm::vec3 vRel = normal * (velocity + glm::cross(angularVelocity, Cube::verts[numVert] * rotation));
+	//actualization to actual dt (collision point)
+	eulerPosition(dt);//faltaran els frames: deltaTime - dt.
+	glm::vec3 relPos = Cube::verts[numVert] * rotation + position;
+
+	//relative velocity:
+	glm::vec3 vRel = normal * (velocity + glm::cross(angularVelocity, relPos - position));
 	//ajustar si és resting o colliding<----
 
-
-
 	//IMPULSE:
+	glm::vec3 j = -(1 + elasticCoefficient)*vRel / (1 / m + glm::dot(normal, inertiaTensorInv*glm::cross(relPos,normal))*relPos);
+	glm::vec3 J = j * normal;
 
+	//update kinematics:
+	glm::vec3 torqueImpulse = glm::cross(relPos, J);;
 
-	//update FORCE:
+	linearMomentum += J;
+	angularMomentum += torqueImpulse;
 
-
-	//update TORQUE:
-
-
-	eulerPosition(deltaTime);
+	eulerPosition(deltaTime-dt);
 
 }
 
