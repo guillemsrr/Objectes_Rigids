@@ -46,7 +46,7 @@ bool renderCube = true;
 
 namespace Cube
 {
-	float halfW = 1.f;
+	float halfW = 0.5f;
 	glm::vec3 verts[8] = {
 		glm::vec3(-halfW, -halfW, -halfW),
 		glm::vec3(-halfW, -halfW,  halfW),
@@ -144,8 +144,8 @@ void PhysicsInit()
 	//Random position:
 	position = glm::vec3(randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW -0.1f), randomFloat(0.0f + Cube::halfW + 0.1f, 10.0f - Cube::halfW - 0.1f), randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW - 0.1f));
 
-	//Random rotation:
-	quaternion = glm::quat(randomFloat(0,360),randomFloat(0,1),randomFloat(0,1),randomFloat(0,1));//PREGUNTA
+	//rotation:
+	quaternion = glm::quat();
 	rotation = glm::toMat3(quaternion);
 
 	//set initial transform
@@ -153,18 +153,24 @@ void PhysicsInit()
 
 	//constants:
 	//inertia body
-	inertiaBodyInv = glm::inverse(glm::mat3() * (m* pow(Cube::halfW * 2, 2) / 6));
+	inertiaBodyInv = glm::inverse(glm::mat3((m* (Cube::halfW * 2) * (Cube::halfW * 2) / 6)));
 	//gravityForce
 	gravityForce = m * gravityAccel;
 
 	//Forces:*********************************
 	//random Impulse
-	impulseForce = glm::vec3(randomFloat(-10.f,10.f), randomFloat(0.f, 10.f), randomFloat(-10.f, 10.f));
+	impulseForce = glm::vec3(randomFloat(-50.f,50.f), randomFloat(0.f, 50.f), randomFloat(-50.f, 50.f));
 	
-	//random torque:PREGUNTA
-	impulseTorque = glm::cross(Cube::verts[rand()%7] - position,impulseForce);
+	//random torque:
+	impulseTorque = glm::cross(Cube::verts[rand()%7] , impulseForce);
 
-	//initialize the only variables that will +=: PREGUNTA
+	//TOTAL FORCE:
+	totalForce = gravityForce +impulseForce;
+
+	//TOTAL TORQUE:
+	totalTorque = impulseTorque;
+
+	//initialize the only variables that will +=: 
 	linearMomentum = angularMomentum = glm::vec3{ 0.f,0.f,0.f };
 
 }
@@ -182,13 +188,6 @@ void PhysicsUpdate(float dt)
 			resetTime += dt;
 			deltaTime = dt;
 
-			//TOTAL FORCE: PREGUNTA
-			totalForce = gravityForce; //+impulseForce;
-
-			//TOTAL TORQUE: PREGUNTA
-			totalTorque = impulseTorque;//dubte: com aplicar la resta de torques?
-			totalTorque = glm::vec3{ 0.f,0.f,0.f };
-
 			//semi-implicit Euler Solver:
 			//********************************
 			
@@ -201,8 +200,15 @@ void PhysicsUpdate(float dt)
 			//collisions:
 			if (useCollisions)
 			{
-				//checkAllVertexCollisions();
+				checkAllVertexCollisions();
 			}
+
+			//reinicialitzem les forces:
+			//TOTAL FORCE:
+			totalForce = gravityForce;
+
+			//TOTAL TORQUE:
+			totalTorque = glm::vec3{ 0.f,0.f,0.f };
 
 			setCubeTransform();
 		}
@@ -253,7 +259,9 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 {
 	//For the best vertex adjustment, we need to apply the rotation before world translation.
 	glm::vec3 auxPos = Cube::verts[numVert] * rotation + position;
-	glm::vec3 auxLast = Cube::verts[numVert];// *(rotation - deltaTime * (angularVelocity*rotation)) + (position - deltaTime * velocity);//PREGUNTA
+	//we put the cube variables to the last frame: (so at "lastTime")
+	eulerSolver(-deltaTime);
+	glm::vec3 auxLast = Cube::verts[numVert] * rotation + position;//PREGUNTA
 
 	if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, auxPos) + d) <= 0.f)//the vertex has collisioned
 	{
@@ -264,15 +272,13 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 		float cuttingTime = (actualTime + lastTime)/2.f;
 		const float tolerance = deltaTime/1000.f;
 
-		//we put the cube variables to the last frame: (so at "lastTime")
-		eulerSolver(-deltaTime);
-
 		while(actualTime - lastTime >=tolerance)//within some tolerance
 		{
 			eulerSolver(cuttingTime);
 			//adjust the vertex position:
 			auxPos = Cube::verts[numVert] * rotation + position;
-			auxLast = Cube::verts[numVert];// *(rotation - glm::dot(deltaTime, (angularVelocity*rotation))) + (position - deltaTime * velocity);//PREGUNTA
+			eulerSolver(-cuttingTime);
+			auxLast = Cube::verts[numVert] * rotation + position;
 
 			if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, auxPos) + d) <= 0.f)
 			{
@@ -288,6 +294,11 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 
 		//we compute the collision reaction at the exact collision time:
 		particlePlaneCollision(normal, cuttingTime, numVert);
+	}
+	else
+	{
+		//come back to the actual frame
+		eulerSolver(deltaTime);
 	}
 }
 
@@ -305,7 +316,10 @@ void particlePlaneCollision(glm::vec3 normal, float dt, int numVert)
 	glm::vec3 j = -(1 + elasticCoefficient)*vRel / (1 / m + glm::dot(normal, inertiaTensorInv*glm::cross(relPos,normal))*relPos);
 	glm::vec3 J = j * normal;
 
-	//update kinematics:
+	//forces:
+	totalForce += J;//PREGUNTA
+
+	//torque:
 	impulseTorque = glm::cross(relPos, J);
 	totalTorque += impulseTorque;//PREGUNTA
 	linearMomentum += J;
@@ -336,8 +350,6 @@ void eulerSolver(float dt)
 	angularVelocity = inertiaTensorInv * angularMomentum;
 
 	//rotation:
-	//rotation += dt * (angularVelocity*rotation); //així "funciona"
-	//rotation = rotation + dt * (angularVelocity*rotation); //així no
-	quaternion = quaternion + glm::quat(dt * (0.5f*angularVelocity*quaternion));
+	quaternion = glm::normalize(quaternion+ dt * 0.5f*glm::quat(0,angularVelocity)*quaternion);
 	rotation = glm::toMat3(quaternion);
 }
