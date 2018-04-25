@@ -28,6 +28,7 @@ struct stateVector
 };
 
 stateVector actualState;
+stateVector auxState;
 
 
 
@@ -153,7 +154,7 @@ void PhysicsInit()
 	srand(static_cast<unsigned int>(_getpid()) ^ static_cast<unsigned int>(clock()) ^ static_cast<unsigned int>(time(NULL)));
 
 	//Random position:
-	actualState.position = glm::vec3(randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW -0.1f), randomFloat(0.0f + Cube::halfW + 0.1f, 10.0f - Cube::halfW - 0.1f), randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW - 0.1f));
+	actualState.position = glm::vec3(randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW - 0.1f), randomFloat(0.0f + Cube::halfW + 0.1f, 10.0f - Cube::halfW - 0.1f), randomFloat(-5.0f + Cube::halfW + 0.1f, 5.0f - Cube::halfW - 0.1f));
 
 	//rotation:
 	actualState.quaternion = glm::quat();
@@ -163,17 +164,24 @@ void PhysicsInit()
 	setCubeTransform();
 
 	//constants:
-	//inertia body
 	inertiaBodyInv = glm::inverse(glm::mat3((m* (Cube::halfW * 2) * (Cube::halfW * 2) / 6)));
-	//gravityForce
 	gravityForce = m * gravityAccel;
 
 	//Forces:*********************************
 	//random Impulse
-	impulseForce = glm::vec3(randomFloat(-50.f,50.f), randomFloat(0.f, 50.f), randomFloat(-50.f, 50.f));
-	
+	impulseForce = glm::vec3(randomFloat(-50.f, 50.f), randomFloat(0.f, 50.f), randomFloat(-50.f, 50.f));
+
 	//random torque:
-	impulseTorque = glm::cross(Cube::verts[rand()%8] , impulseForce);
+	int x = rand() % 8;
+	impulseTorque = glm::vec3{ 0.f,0.f,0.f };
+	for (int i = 0; i <= Cube::verts->length();i++)
+	{
+		if (rand() % 5 == 0)
+		{
+			impulseTorque += glm::cross(Cube::verts[i], impulseForce);
+		}
+	}
+	
 
 	//TOTAL FORCE:
 	totalForce = gravityForce +impulseForce;
@@ -315,22 +323,21 @@ void checkParticlePlaneCollision(glm::vec3 normal, float d, int numVert)
 
 void particlePlaneCollision(glm::vec3 normal, int numVert)
 {
-	glm::vec3 relPos = Cube::verts[numVert] * actualState.rotation;// + actualState.position;
+	glm::vec3 relPos = actualState.rotation*Cube::verts[numVert] + actualState.position;
 
 	//relative velocity:
-	glm::vec3 vRel = normal * (actualState.velocity + glm::cross(actualState.angularVelocity, relPos ));//- actualState.position));
+	float vRel = glm::dot(normal,(actualState.velocity + glm::cross(actualState.angularVelocity, relPos - actualState.position)));
 	//ajustar si és resting o colliding<----
+	
 
 	//IMPULSE:
-	glm::vec3 j = -(1 + elasticCoefficient)*vRel / (1 / m + glm::dot(normal, actualState.inertiaTensorInv*glm::cross(relPos,normal))*relPos);
+	float j = -(1 + elasticCoefficient)*vRel / (1 / m + glm::dot(normal, glm::cross(actualState.inertiaTensorInv*glm::cross(relPos,normal),relPos)));
 	glm::vec3 J = j * normal;
-
-	//forces:
-	totalForce += J;//PREGUNTA
+	totalForce += J;
 
 	//torque:
 	impulseTorque = glm::cross(relPos, J);
-	totalTorque += impulseTorque;//PREGUNTA
+	totalTorque += impulseTorque;
 	actualState.linearMomentum += J;
 	actualState.angularMomentum += impulseTorque;
 }
