@@ -6,6 +6,7 @@
 #include <iostream>
 #include <time.h>
 #include <SDL.h>
+#include <vector>
 
 #pragma region Variables
 //matrices:
@@ -39,10 +40,15 @@ glm::vec3 totalTorque;
 glm::vec3 impulseTorque;
 glm::mat3 inertiaBodyInv;
 
-//Collision Planes:
+//Collision:
 glm::vec3 XplaneNormal = { 1,0,0 };
 glm::vec3 YplaneNormal = { 0,1,0 };
 glm::vec3 ZplaneNormal = { 0,0,1 };
+
+//std::vector<std::pair<int, float>> collisionedVertexs;
+std::vector<int> collisionedVertexNum;
+std::vector<glm::vec3> collisionedVertexPlane;
+std::vector<float> collisionedVertexTime;
 
 //Time:
 float resetTime;
@@ -81,10 +87,17 @@ float randomFloat(float min, float max)
 void setCubeTransform();
 void eulerSolver(float dt, stateVector &stateVector);
 //Col·lisions:
-void checkAllVertexCollisions(float dt);
-bool checkVertexPlaneCollisions(float dt, int numVert);
-bool checkParticlePlaneCollision(float dt, glm::vec3 normal, float d, int numVert);
-void particlePlaneCollision(glm::vec3 normal, int numVert);
+
+void checkAllVertexCollisions1(float dt);
+void checkVertexPlaneCollisions1(float dt, int numVert);
+void checkParticlePlaneCollision1(float dt, glm::vec3 normal, float d, int numVert);
+void computeCollisionedVertexs(float dt);
+void reinitializeCollisions();
+
+void checkAllVertexCollisions(stateVector &state, float dt);
+bool checkVertexPlaneCollisions(stateVector &state, float dt, int numVert);
+bool checkParticlePlaneCollision(stateVector &state, float dt, glm::vec3 normal, float d, int numVert);
+void particlePlaneCollision(stateVector &state, glm::vec3 normal, int numVert);
 #pragma endregion
 
 #pragma region GUI Variables
@@ -139,12 +152,11 @@ void GUI()
 }
 
 
-int loop;
 void PhysicsInit()
 {
-	loop = 0;
 	system("cls");
 
+	//WTF std::cout << Cube::verts.size()<< std::endl;
 	//Time:
 	resetTime = 0.0f;
 
@@ -179,7 +191,6 @@ void PhysicsInit()
 			impulseTorque += glm::cross(Cube::verts[i], impulseForce);
 		}
 	}
-	
 
 	//TOTAL FORCE:
 	totalForce = gravityForce +impulseForce;
@@ -205,8 +216,13 @@ void PhysicsUpdate(float dt)
 			resetTime += dt;
 			
 			//collisions:
-			checkAllVertexCollisions(dt);
-
+			//checkAllVertexCollisions(actualState, dt);
+			int precision = 100;
+			for (int i = 0; i <= precision; i++)
+			{
+				checkAllVertexCollisions1(dt/(float)precision);
+			}
+			
 			//reinicialitzem les forces:
 			totalForce = gravityForce;
 			totalTorque = glm::vec3{ 0.f,0.f,0.f };
@@ -229,42 +245,33 @@ void setCubeTransform()
 	Cube::updateCube(cubeTransform);
 }
 
-void checkAllVertexCollisions(float dt)
+void checkAllVertexCollisions1(float dt)
 {
-	bool collision = false;
-	for (int i=0;i<=Cube::verts->length();i++)
+	//WTF?? for (int i = 0; i <= Cube::verts->length(); i++)
+	for (int i = 0; i <= 7; i++)
 	{
-		collision = checkVertexPlaneCollisions(dt, i);
+		checkVertexPlaneCollisions1(dt, i);
 	}
-	if (!collision)
-	{
-		eulerSolver(dt, actualState);
-	}
-	else
-	{
-		//checkAllVertexCollisions(dt);
-	}
+	
+	computeCollisionedVertexs(dt);
 }
-
-bool checkVertexPlaneCollisions(float dt, int numVert)
+void checkVertexPlaneCollisions1(float dt, int numVert)
 {
 	//left plane
-	bool c1 = checkParticlePlaneCollision(dt, XplaneNormal, 5.f, numVert);
+	checkParticlePlaneCollision1(dt, XplaneNormal, 5.f, numVert);
 	//right plane
-	bool c2 = checkParticlePlaneCollision(dt, -XplaneNormal, 5.f, numVert);
+	checkParticlePlaneCollision1(dt, -XplaneNormal, 5.f, numVert);
 	//back plane
-	bool c3 = checkParticlePlaneCollision(dt, ZplaneNormal, 5.f, numVert);
+	checkParticlePlaneCollision1(dt, ZplaneNormal, 5.f, numVert);
 	//front plane
-	bool c4 = checkParticlePlaneCollision(dt, -ZplaneNormal, 5.f, numVert);
+	checkParticlePlaneCollision1(dt, -ZplaneNormal, 5.f, numVert);
 	//down plane
-	bool c5 = checkParticlePlaneCollision(dt, YplaneNormal, 0.f, numVert);
+	checkParticlePlaneCollision1(dt, YplaneNormal, 0.f, numVert);
 	//up plane
-	bool c6 = checkParticlePlaneCollision(dt, -YplaneNormal, 10.f, numVert);
-
-	return c1 && c2 && c3 && c4 && c5 && c6;
+	checkParticlePlaneCollision1(dt, -YplaneNormal, 10.f, numVert);
 }
 
-bool checkParticlePlaneCollision(float dt, glm::vec3 normal, float d, int numVert)
+void checkParticlePlaneCollision1(float dt, glm::vec3 normal, float d, int numVert)
 {
 	stateVector lastState = actualState;
 	stateVector nextState = actualState;
@@ -276,7 +283,136 @@ bool checkParticlePlaneCollision(float dt, glm::vec3 normal, float d, int numVer
 
 	if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, nextPos) + d) <= 0.f)//the vertex has collisioned
 	{
-		std::cout << "Collisioned " << numVert << std::endl;
+		//accuration of collision position using bisection method:
+		//time:
+		float lastTime = 0.f;
+		float nextTime = dt;
+		float cuttingTime = (nextTime + lastTime) / 2.f;
+		const float tolerance = dt / 100000.f;
+
+		//cuttingTime state:
+		stateVector cutState;
+		stateVector initState = lastState;
+
+		while (nextTime - lastTime >= tolerance)//within some tolerance
+		{
+			cutState = initState;
+			eulerSolver(cuttingTime, cutState);
+
+			if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, nextPos) + d) <= 0.f)
+			{
+				lastTime = cuttingTime;
+				lastState = cutState;
+				auxLast = Cube::verts[numVert] * lastState.rotation + lastState.position;
+			}
+			else
+			{
+				nextTime = cuttingTime;
+				nextState = cutState;
+				nextPos = Cube::verts[numVert] * nextState.rotation + nextState.position;
+			}
+
+			cuttingTime = (nextTime + lastTime) / 2.f;
+		}
+
+		//we put the vertex number, plane and cuttingTime:
+		collisionedVertexNum.push_back(numVert);
+		//std::cout << numVert << std::endl;
+		collisionedVertexPlane.push_back(normal);
+		//std::cout << normal.x <<" "<<normal.y<<" "<<normal.z<< std::endl;
+		collisionedVertexTime.push_back(cuttingTime);
+		//std::cout << cuttingTime << std::endl;
+	}
+}
+
+void computeCollisionedVertexs(float dt)
+{
+	if (!collisionedVertexNum.empty())
+	{
+		//calculem la mitja del tc de tots els vertexs:
+		float tcMean = 0.f;
+
+		for (auto tc : collisionedVertexTime)
+		{
+			//std::cout<<tc<<std::endl,
+			tcMean += tc;
+		}
+		tcMean /= (float)collisionedVertexNum.size();
+
+		//ara hauríem de mirar si hi ha algun vèrtex que ha xocat amb una distància massa llunyana de la mitjana
+		//*
+		//*
+
+		//un cop tenim el tc més ajustat per cada vèrtex col·lisionat, portem el cub fins aquest mateix punt:
+		eulerSolver(tcMean, actualState);
+
+		//i ara apliquem l'impuls per cada vèrtex:
+
+		for (int i = 0; i < collisionedVertexNum.size(); i++)
+		{
+			particlePlaneCollision(actualState, collisionedVertexPlane[i], collisionedVertexNum[i]);
+		}
+
+		//per acabar el frame, tornem a mirar si hi ha col·lisions:
+		reinitializeCollisions();
+		checkAllVertexCollisions1(dt - tcMean);
+
+	}
+	else
+	{
+		eulerSolver(dt, actualState);
+	}
+
+}
+
+void checkAllVertexCollisions(stateVector &state, float dt)
+{
+	bool collision = false;
+	for (int i = 0; i <= Cube::verts->length(); i++)
+	{
+		collision = checkVertexPlaneCollisions(state, dt, i);
+	}
+	if (!collision)
+	{
+		eulerSolver(dt, state);
+	}
+	else
+	{
+		//checkAllVertexCollisions(dt);
+	}
+}
+
+bool checkVertexPlaneCollisions(stateVector &state, float dt, int numVert)
+{
+	//left plane
+	bool c1 = checkParticlePlaneCollision(state, dt, XplaneNormal, 5.f, numVert);
+	//right plane
+	bool c2 = checkParticlePlaneCollision(state, dt, -XplaneNormal, 5.f, numVert);
+	//back plane
+	bool c3 = checkParticlePlaneCollision(state, dt, ZplaneNormal, 5.f, numVert);
+	//front plane
+	bool c4 = checkParticlePlaneCollision(state, dt, -ZplaneNormal, 5.f, numVert);
+	//down plane
+	bool c5 = checkParticlePlaneCollision(state, dt, YplaneNormal, 0.f, numVert);
+	//up plane
+	bool c6 = checkParticlePlaneCollision(state, dt, -YplaneNormal, 10.f, numVert);
+
+	return c1 && c2 && c3 && c4 && c5 && c6;
+}
+
+bool checkParticlePlaneCollision(stateVector &state, float dt, glm::vec3 normal, float d, int numVert)
+{
+	stateVector lastState = actualState;
+	stateVector nextState = actualState;
+	eulerSolver(dt, nextState);
+
+	//auxiliar variables to work with:
+	glm::vec3 nextPos = Cube::verts[numVert] * nextState.rotation + nextState.position;
+	glm::vec3 auxLast = Cube::verts[numVert] * lastState.rotation + lastState.position;
+
+	if ((glm::dot(normal, auxLast) + d)*(glm::dot(normal, nextPos) + d) <= 0.f)//the vertex has collisioned
+	{
+		//std::cout << "Collisioned " << numVert << std::endl;
 
 		//accuration of collision position using bisection method:
 		//time:
@@ -309,36 +445,50 @@ bool checkParticlePlaneCollision(float dt, glm::vec3 normal, float d, int numVer
 
 			cuttingTime = (nextTime + lastTime) / 2.f;
 		}
-		//now we have the exact time it collisioned, so we now should check for a previous collision and if not, update the state
-		checkAllVertexCollisions(cuttingTime);
 
 		//and at this point we compute the impact forces
-		particlePlaneCollision(normal, numVert);
+		particlePlaneCollision(state, normal, numVert);
 
+		if (cuttingTime > 0.00001f)
+		{
+			std::cout << cuttingTime << std::endl;
+			//now we have the exact time it collisioned, so we now should check for a previous collision and if not, update the state
+			checkAllVertexCollisions(state, dt - cuttingTime);
+
+		}
+		
 		return true;
 	}
 	return false;
 }
 
-void particlePlaneCollision(glm::vec3 normal, int numVert)
+void particlePlaneCollision(stateVector &state, glm::vec3 normal, int numVert)
 {
-	glm::vec3 relPos = actualState.rotation*Cube::verts[numVert] + actualState.position;
+	glm::vec3 relPos = state.rotation*Cube::verts[numVert] + state.position;
 
 	//relative velocity:
-	float vRel = glm::dot(normal,(actualState.velocity + glm::cross(actualState.angularVelocity, relPos - actualState.position)));
+	float vRel = glm::dot(normal,(state.velocity + glm::cross(state.angularVelocity, relPos - state.position)));
 	//ajustar si és resting o colliding<----
-	
+	if (vRel < 0)
+	{
+		std::cout << "colliding\n";
+		//IMPULSE:
+		float j = -(1 + elasticCoefficient)*vRel / (1 / m + glm::dot(normal, glm::cross(state.inertiaTensorInv*glm::cross(relPos, normal), relPos)));
+		glm::vec3 J = j * normal;
 
-	//IMPULSE:
-	float j = -(1 + elasticCoefficient)*vRel / (1 / m + glm::dot(normal, glm::cross(actualState.inertiaTensorInv*glm::cross(relPos,normal),relPos)));
-	glm::vec3 J = j * normal;
-	totalForce += J;
-
-	//torque:
-	impulseTorque = glm::cross(relPos, J);
-	totalTorque += impulseTorque;
-	//actualState.linearMomentum += J;
-	//actualState.angularMomentum += impulseTorque;
+		//torque:
+		impulseTorque = glm::cross(relPos, J);
+		state.linearMomentum += J;
+		state.angularMomentum += impulseTorque;
+	}
+	else if (vRel == 0)
+	{
+		std::cout << "resting\n";
+	}
+	else if (vRel > 0)
+	{
+		std::cout << "separating\n";
+	}
 }
 
 void eulerSolver(float dt, stateVector &stateVector)
@@ -364,4 +514,11 @@ void eulerSolver(float dt, stateVector &stateVector)
 	//rotation:
 	stateVector.quaternion = glm::normalize(stateVector.quaternion+ dt * 0.5f*glm::quat(0, stateVector.angularVelocity)*stateVector.quaternion);
 	stateVector.rotation = glm::toMat3(stateVector.quaternion);
+}
+
+void reinitializeCollisions()
+{
+	collisionedVertexNum.clear();
+	collisionedVertexPlane.clear();
+	collisionedVertexTime.clear();
 }
